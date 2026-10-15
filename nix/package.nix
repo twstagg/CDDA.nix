@@ -30,6 +30,7 @@
   SDL2_image,
   SDL2_ttf,
   SDL2_mixer,
+  libx11,
   sdl3,
   sdl3-image,
   sdl3-ttf,
@@ -80,6 +81,12 @@ let
           SDL2_image
           SDL2_ttf
           freetype
+          # imgui_impl_sdl2 + sdltiles include SDL_syswm.h, which pulls
+          # X11/Xlib.h; real SDL2 propagated x11 headers transitively,
+          # sdl2-compat (what nixpkgs' SDL2 resolves to) does not.
+          # nixpkgs' own SDL2-era derivation adds libx11 for the same
+          # reason.
+          libx11
         ]
         ++ optionals sound [ SDL2_mixer ])
     else
