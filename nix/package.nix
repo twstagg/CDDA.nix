@@ -2,10 +2,11 @@
 # own Makefile (see doc/c++/COMPILING.md). The Makefile stays the build
 # system; Nix just hands it dependencies and install targets.
 #
-# Shaped after nixpkgs' pkgs/games/cataclysm-dda/common.nix, ported to this
-# tree's SDL3-only tiles backend (SDL2 support was removed upstream on
-# 2026-08-11; the nixpkgs derivation still links SDL2 and will not build
-# against this source).
+# Shaped after nixpkgs' pkgs/games/cataclysm-dda/common.nix. Upstream
+# switched the tiles backend from SDL2 to SDL3-only on 2026-08-11, so the
+# SDL stack follows the pinned game era: stable 0.I and older need SDL2,
+# master / 0.J dev needs SDL3. useSdl3 selects between them; flip it in
+# flake.nix when moving the game input across that boundary.
 #
 # No patches are required:
 #   * PREFIX is baked in at compile time (-DPREFIX -DDATA_DIR_PREFIX ->
@@ -25,14 +26,21 @@
   ncurses,
   zlib,
   bzip2,
+  SDL2,
+  SDL2_image,
+  SDL2_ttf,
+  SDL2_mixer,
   sdl3,
   sdl3-image,
   sdl3-ttf,
   sdl3-mixer,
   freetype,
-  # SDL3 graphical build; ncurses text build when false
+  # SDL major version: true for SDL3 (master / 0.J dev), false for
+  # SDL2-era sources (stable 0.I and older)
+  useSdl3 ? true,
+  # SDL graphical build; ncurses text build when false
   tiles ? true,
-  # sound via SDL3_mixer; requires tiles (COMPILING.md: SOUND needs TILES)
+  # sound via SDL mixer (matches useSdl3); requires tiles (COMPILING.md: SOUND needs TILES)
   sound ? true,
   # debug build: no RELEASE=1, keep symbols
   debug ? false,
@@ -58,13 +66,22 @@ let
 
   gameDeps =
     if tiles then
-      [
-        sdl3
-        sdl3-image
-        sdl3-ttf
-        freetype
-      ]
-      ++ optionals sound [ sdl3-mixer ]
+      (if useSdl3 then
+        [
+          sdl3
+          sdl3-image
+          sdl3-ttf
+          freetype
+        ]
+        ++ optionals sound [ sdl3-mixer ]
+      else
+        [
+          SDL2
+          SDL2_image
+          SDL2_ttf
+          freetype
+        ]
+        ++ optionals sound [ SDL2_mixer ])
     else
       [ ncurses ];
 
@@ -78,14 +95,15 @@ stdenv.mkDerivation (
     pname = "cataclysm-dda" + optionalString buildTests "-test" + variantSuffix;
     inherit version src;
 
-    # python3: tools/build_shaders.py (tiles); glslang: glslangValidator for
-    # GLSL -> SPIR-V; gettext: msgfmt for lang/*.po -> lang/*.mo.
+    # python3: tools/build_shaders.py (SDL3 tiles only; SDL2-era sources
+    # have no shader step); glslang: glslangValidator for GLSL -> SPIR-V;
+    # gettext: msgfmt for lang/*.po -> lang/*.mo.
     nativeBuildInputs = [
       pkg-config
       gettext
       python3
     ]
-    ++ optionals tiles [ glslang ];
+    ++ optionals (tiles && useSdl3) [ glslang ];
 
     buildInputs = [
       zlib
@@ -101,7 +119,10 @@ stdenv.mkDerivation (
     '';
 
     # The Makefile invokes these by bare name; be explicit anyway.
-    env.GLSLANG = lib.getExe' glslang "glslangValidator";
+    # (SDL2-era sources never call the shader script, so no GLSLANG then.)
+    env = lib.optionalAttrs (tiles && useSdl3) {
+      GLSLANG = lib.getExe' glslang "glslangValidator";
+    };
 
     makeFlags = [
       "PREFIX=${placeholder "out"}"

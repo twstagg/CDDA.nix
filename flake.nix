@@ -1,7 +1,8 @@
 {
   description = ''
-    CDDA.nix: Cataclysm: Dark Days Ahead packaged with Nix. SDL3 tiles
-    and ncurses builds plus community tilesets, composed from source.
+    CDDA.nix: Cataclysm: Dark Days Ahead packaged with Nix. SDL tiles
+    (v2 for stable 0.I, v3 for master) and ncurses builds plus community
+    tilesets, composed from source.
   '';
 
   inputs = {
@@ -9,7 +10,7 @@
     flake-parts.url = "github:hercules-ci/flake-parts";
     # The game itself. Bumped with nix flake update like any other input.
     cataclysm-dda = {
-      url = "github:CleverRaven/Cataclysm-DDA";
+      url = "github:CleverRaven/Cataclysm-DDA/0.I-1";
       flake = false;
     };
   };
@@ -30,17 +31,22 @@
           # Game sources for everything below; the updater never touches
           # this pin (nix flake update moves it instead).
           gameSrc = inputs.cataclysm-dda.outPath;
+          # SDL major version tracks the pinned game era: stable 0.I and
+          # older are SDL2 (imgui_impl_sdl2, #include <SDL.h>); master /
+          # 0.J dev went SDL3-only on 2026-08-11. Flip back to true when
+          # moving the input past that boundary.
+          useSdl3 = false;
           # VERSION for the binary banner; fetched sources have no .git,
-          # so the Makefile would otherwise fall back to the bare 0.J
-          # default.
-          version = "0.J+" + (inputs.cataclysm-dda.shortRev or "git");
+          # so the Makefile would otherwise fall back to its bare default
+          # (0.J on master, 0.I-x on stable).
+          version = "0.I-1+" + (inputs.cataclysm-dda.shortRev or "git");
 
           mkCdda =
             attrs:
             pkgs.callPackage ./nix/package.nix (
               attrs
               // {
-                inherit version;
+                inherit version useSdl3;
                 src = gameSrc;
               }
             );

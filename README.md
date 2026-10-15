@@ -3,7 +3,7 @@
 Nix packaging for Cataclysm: Dark Days Ahead that lives outside the game repo. It builds the game and composes all community tilesets from source, driving the project's own Makefile and compose.py instead of reimplementing either. Upstream doesn't seem to want to take Nix packaging in-tree, and they also seem to have an aversion LLMs, as they do not accept contributions from people who use LLMs at all, even when used in minor cases, so it lives here (see CleverRaven/Cataclysm-DDA#87320 and CleverRaven/Cataclysm-DDA#89051)
 
 ```sh
-nix run github:twstagg/CDDA.nix#tiles-full   # SDL3 + sound, every tileset baked in
+nix run github:twstagg/CDDA.nix#tiles-full   # SDL + sound, every tileset baked in
 nix build github:twstagg/CDDA.nix#tileset-retrodays
 ```
 

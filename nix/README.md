@@ -5,7 +5,8 @@ This flake packages Cataclysm: DDA from this checkout by driving the project's o
 ## Build & run
 
 ```sh
-nix build .#tiles        # SDL3 tiles + sound (default)
+nix build .#tiles        # SDL tiles + sound (default; SDL2 for the
+                         # stable 0.I pin, SDL3 for master / 0.J dev)
 nix run .#tiles          # ...and run it
 nix build .#curses       # ncurses text build
 nix run .#curses
@@ -31,7 +32,7 @@ cd "$(mktemp -d)" && ln -s ../result/share/cataclysm-dda data   # adjust path
 
 ## How it works
 
-- `nix/package.nix`: one `stdenv.mkDerivation` covering all variants (`tiles`, `sound`, `buildTests` flags). It mirrors nixpkgs' `pkgs/games/cataclysm-dda` shape, ported to this tree's SDL3-only tiles backend, with no source patches:
+- `nix/package.nix`: one `stdenv.mkDerivation` covering all variants (`tiles`, `sound`, `buildTests` flags, plus `useSdl3` for the SDL major version). It mirrors nixpkgs' `pkgs/games/cataclysm-dda` shape, with no source patches. SDL follows the pinned game era: SDL2 for stable 0.I and older, SDL3 for master / 0.J dev (upstream dropped SDL2 on 2026-08-11; flip `useSdl3` in `flake.nix` when moving the input across that boundary):
   - `PREFIX=$out` is baked into the binary (`-DPREFIX -DDATA_DIR_PREFIX`), so data resolves to `$out/share/cataclysm-dda` and locales to `$out/share/locale`.
   - `LANGUAGES=all LOCALIZE=1` compiles every translation via `msgfmt`.
   - Tiles builds compile GLSL shaders to SPIR-V with `glslangValidator` (`tools/build_shaders.py`); macOS/Windows formats are not produced.
