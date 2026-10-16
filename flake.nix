@@ -28,18 +28,27 @@
         let
           inherit (pkgs) lib;
 
-          # Game sources for everything below; the updater never touches
-          # this pin (nix flake update moves it instead).
+          # Which upstream era the game input tracks. "stable" = 0.I tag
+          # (SDL2, in-tree pre-composed tilesets, Basic soundpack only);
+          # "master" = 0.J dev (SDL3-only since 2026-08-11, decoupled
+          # tilesets composed here, test soundpack only). Flip the input
+          # URL in `inputs` above together with this flag. (The game pin
+          # itself moves with nix flake update; the updaters never touch
+          # it.)
+          gameEra = "stable";
+          isMaster = gameEra == "master";
+          # Game sources for everything below.
           gameSrc = inputs.cataclysm-dda.outPath;
-          # SDL major version tracks the pinned game era: stable 0.I and
-          # older are SDL2 (imgui_impl_sdl2, #include <SDL.h>); master /
-          # 0.J dev went SDL3-only on 2026-08-11. Flip back to true when
-          # moving the input past that boundary.
-          useSdl3 = false;
+          # SDL major version follows the era (see nix/package.nix).
+          useSdl3 = isMaster;
           # VERSION for the binary banner; fetched sources have no .git,
-          # so the Makefile would otherwise fall back to its bare default
-          # (0.J on master, 0.I-x on stable).
-          version = "0.I-1+" + (inputs.cataclysm-dda.shortRev or "git");
+          # so the Makefile would otherwise fall back to its bare default.
+          version = (if isMaster then "0.J+" else "0.I-1+") + (inputs.cataclysm-dda.shortRev or "git");
+          # Composed tilesets only make sense when the game no longer
+          # ships them: on stable they already sit pre-composed in gfx/
+          # (merging ours would duplicate tileset NAMEs), on master they
+          # live solely in the external repo.
+          bundleTilesets = isMaster;
 
           mkCdda =
             attrs:
@@ -51,9 +60,13 @@
               }
             );
 
+          # Sound builds carry CC-Sounds, mirroring release.yml (which
+          # drops it into data/sound for every sound-enabled build).
+          # Overridable per package; curses and cata-test stay lean.
           tiles = mkCdda {
             tiles = true;
             sound = true;
+            extraSoundpacks = [ soundpacks.soundpack-cc-sounds ];
           };
           curses = mkCdda {
             tiles = false;
@@ -139,6 +152,30 @@
             repo = "CDDA-tileset";
             rev = "3f06254658f48f3c01e5a29994c971f2a6e5fc8a";
             sha256 = "sha256-ZAZ3uAuav2H7CTI6CLHnnQIFMxNHQJV9HpgUcFhp5bc=";
+          };
+
+          # CC-Sounds: the community soundpack release CI bundles into
+          # data/sound for sound-enabled builds (release.yml "Get
+          # soundpack"). Full clone with submodules: music/ arrives via
+          # the CDDA-Music-Packs submodule, same as the workflow's
+          # --recurse-submodules. Revs + hashes bump with
+          # nix run .#update-soundpacks (never by hand).
+          soundpacksSrc = pkgs.fetchFromGitHub {
+            owner = "Fris0uman";
+            repo = "CDDA-Soundpacks";
+            rev = "02b65460a808624b500013d4b9aa71dccd968817";
+            sha256 = "sha256-S5aZjQYG2LHnC2lJcVkcNn4p3CA/iAed99w250K/Wp4=";
+            fetchSubmodules = true;
+          };
+
+          soundpacks = {
+            soundpack-cc-sounds = pkgs.callPackage ./nix/soundpack.nix {
+              name = "CC-Sounds";
+              src = soundpacksSrc;
+              sourceDir = "sound/CC-Sounds";
+              installName = "CC-Sounds";
+              version = "02b6546";
+            };
           };
 
           # Per-set table copied from .github/workflows/compose-tilesets.yml:
@@ -321,9 +358,11 @@
           );
 
           # Same idea as a release bundle: the game with every composed
-          # set baked into share/cataclysm-dda/gfx.
+          # set baked into share/cataclysm-dda/gfx (plus the soundpacks
+          # tiles already carries). On stable the tileset list is empty
+          # by design: the game ships its sets pre-composed in-tree.
           tiles-full = tiles.override {
-            extraTilesets = builtins.attrValues tilesets;
+            extraTilesets = lib.optionals bundleTilesets (builtins.attrValues tilesets);
           };
         in
         {
@@ -337,7 +376,8 @@
             json-formatter = jsonFormatter;
             default = tiles;
           }
-          // tilesets;
+          // tilesets
+          // soundpacks;
 
           devShells.default = pkgs.mkShell {
             packages = with pkgs; [
@@ -444,6 +484,39 @@
                   bash ${self + /nix/test-update-tilesets.sh} ${self + /nix/update-tilesets.sh}
                   touch $out
                 '';
+
+            # Every soundpack must carry its soundpack.txt manifest (same
+            # gate idea as tilesets-validate: catches empty-fetch and
+            # wrong-subdir failures before they reach the game).
+            soundpacks-validate =
+              let
+                allPacks = builtins.attrValues soundpacks;
+              in
+              pkgs.runCommand "cdda-soundpacks-validate" { } ''
+                ${lib.concatMapStrings (s: ''
+                  test -f '${s}/soundpack.txt' \
+                    || (echo "missing soundpack.txt in ${s.soundpackDir}" >&2; exit 1)
+                '') allPacks}
+                touch $out
+              '';
+
+            # Unit tests for the soundpack updater with mocked git/nix.
+            # No network, no builds; same harness as updater-tests.
+            updater-soundpacks-tests =
+              pkgs.runCommand "cdda-updater-soundpacks-tests"
+                {
+                  nativeBuildInputs = with pkgs; [
+                    bash
+                    coreutils
+                    gawk
+                    gnugrep
+                    gnused
+                  ];
+                }
+                ''
+                  bash ${self + /nix/test-update-soundpacks.sh} ${self + /nix/update-soundpacks.sh}
+                  touch $out
+                '';
           };
 
           apps.update-tilesets =
@@ -459,6 +532,26 @@
                   nix
                 ];
                 text = builtins.readFile ./nix/update-tilesets.sh;
+              };
+            in
+            {
+              type = "app";
+              program = lib.getExe updater;
+            };
+
+          apps.update-soundpacks =
+            let
+              updater = pkgs.writeShellApplication {
+                name = "update-soundpacks";
+                runtimeInputs = with pkgs; [
+                  coreutils
+                  gawk
+                  git
+                  gnugrep
+                  gnused
+                  nix
+                ];
+                text = builtins.readFile ./nix/update-soundpacks.sh;
               };
             in
             {

@@ -52,6 +52,11 @@
   # composed tileset derivations (nix/tileset.nix) baked into
   # share/cataclysm-dda/gfx/<tilesetDir>; release-bundle equivalent
   extraTilesets ? [ ],
+  # soundpack derivations (nix/soundpack.nix) baked into
+  # share/cataclysm-dda/sound/<soundpackDir>, alongside the in-tree
+  # Basic pack. Mirrors release.yml, which drops CC-Sounds into
+  # data/sound for every sound-enabled build.
+  extraSoundpacks ? [ ],
   version,
   src,
 }:
@@ -170,6 +175,17 @@ stdenv.mkDerivation (
           mkdir -p $out/share/cataclysm-dda/gfx/${t.tilesetDir}
           cp -R --no-preserve=ownership ${t}/. $out/share/cataclysm-dda/gfx/${t.tilesetDir}/
         '') extraTilesets}
+      ''
+      + optionalString (extraSoundpacks != [ ]) ''
+        # Same merge idiom as extraTilesets above, but simpler: packs
+        # need no compose step, so each derivation already IS the pack
+        # directory (soundpack.txt + JSON + audio). Installed under
+        # sound/, where the game scans them alongside the in-tree pack
+        # (Basic on stable, Menu_Sound_Test on master).
+        ${lib.concatMapStrings (s: ''
+          mkdir -p $out/share/cataclysm-dda/sound/${s.soundpackDir}
+          cp -R --no-preserve=ownership ${s}/. $out/share/cataclysm-dda/sound/${s.soundpackDir}/
+        '') extraSoundpacks}
       '';
 
     dontStrip = debug;

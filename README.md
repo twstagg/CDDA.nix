@@ -9,4 +9,4 @@ nix build github:twstagg/CDDA.nix#tileset-retrodays
 
 The game itself comes from a flake input (`github:CleverRaven/Cataclysm-DDA`), so `nix flake update` moves it forward like any other input. Tileset sources stay pinned in `flake.nix`, with `nix run .#update-tilesets` to bump them. See `nix/README.md` for the full tour: packages, checks, dev shell, pins.
 
-Layout: `flake.nix` (packages, checks, shell, updater app), `nix/package.nix` (game builds), `nix/tileset.nix` (set composer), `nix/update-tilesets.sh` plus `nix/test-update-tilesets.sh` (pin tooling and its tests).
+Layout: `flake.nix` (packages, checks, shell, updater apps), `nix/package.nix` (game builds), `nix/tileset.nix` (set composer), `nix/soundpack.nix` (pack isolator), `nix/update-tilesets.sh` plus `nix/test-update-tilesets.sh` and `nix/update-soundpacks.sh` plus `nix/test-update-soundpacks.sh` (pin tooling and its tests). `gameEra` in `flake.nix` picks stable (SDL2, in-tree art) or master (SDL3, composed art); sound (CC-Sounds) ships on both.

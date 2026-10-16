@@ -53,7 +53,8 @@ All community tilesets are composed from source with `tools/gfx_tools/compose.py
 ```sh
 nix build .#tileset-retrodays     # one of 17: see flake.nix tilesetMatrix
 nix build .#tiles-full            # game with every set baked into
-                                  # share/cataclysm-dda/gfx (release equivalent)
+                                   # share/cataclysm-dda/gfx (release equivalent),
+                                   # plus CC-Sounds (see Soundpacks below)
 nix build .#checks.x86_64-linux.tilesets-validate   # structural check of all sets
 ```
 
@@ -76,7 +77,7 @@ ln -s ./result ~/.cataclysm-dda/gfx/Retrodays
 - **IsoMSX+**: broken at the pinned rev. Its JSON names seasonal sprites nobody ever drew, so compose exits 1. Commented out with a NOTE; filing upstream is tracked work.
 - **Mushroom-Dream**: composes fine but ships no `fallback.png`, and the loader opens every `tiles-new` file under an assert. Trialed in-game: fails to load as predicted. Commented out with a NOTE; upstream issue still TODO.
 
-### Updating pins
+### Updating tileset pins
 
 Revs + hashes live in `flake.nix` (`tilesetsSrc`, `cuteclysmSrc`). Bump
 them with the updater app (pinned-by-default, fresh-on-demand):
@@ -99,3 +100,23 @@ How it stays safe: it resolves every HEAD and works out the whole plan before wr
 `nix/test-update-tilesets.sh` tests the updater with mocked git/nix (skip, update, sparse preservation, bad diagnostics, fetch failures, interrupted runs, ambiguous output, surprise success) and runs as `checks.updater-tests` with no network or builds.
 
 Bump when tilesets go stale: new game content without matching sprites falls back to ASCII/unknown glyphs in-game.
+
+## Soundpacks
+
+What ships where depends on the game era (`gameEra` in `flake.nix`):
+
+| Era | Game SDL | Tilesets | Sound in-tree | Sound bundled |
+|-----|----------|----------|---------------|---------------|
+| stable 0.I | SDL2 | 17 sets pre-composed in `gfx/` (used as-is, never merged over — merging would duplicate tileset NAMEs) | `Basic` (menu clicks) | CC-Sounds |
+| master 0.J dev | SDL3 | decoupled upstream; composed here via `tilesetMatrix` and merged into `gfx/` | `Menu_Sound_Test` (test clicks) | CC-Sounds |
+
+Both eras bundle CC-Sounds (`Fris0uman/CDDA-Soundpacks`, `sound/CC-Sounds`, music via submodule) into every sound-enabled package, mirroring `release.yml`'s "Get soundpack" step. Unlike tilesets there is no compose step: `nix/soundpack.nix` just isolates the pack subtree into `$out`, and `extraSoundpacks` in `nix/package.nix` merges it into `share/cataclysm-dda/sound/` next to the in-tree pack, using the same merge idiom as `extraTilesets`.
+
+```sh
+nix build .#soundpack-cc-sounds
+nix run .#update-soundpacks -- --check   # compare current vs HEAD, no changes
+nix run .#update-soundpacks              # bump the pin, verifying the hash
+nix build .#checks.x86_64-linux.soundpacks-validate   # every pack has soundpack.txt
+```
+
+A stale soundpack is benign, unlike stale art: unknown sound ids never trigger, so new content just stays silent until the pin catches up. And players can always drop packs into the user sound dir (`~/.cataclysm-dda/sound/`), which the game scans before the shipped `data/sound/` — the flake bundling is release parity and convenience, not a requirement.
